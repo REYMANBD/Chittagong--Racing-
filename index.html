@@ -36,7 +36,7 @@ function subscribe(){if(dbChannel)db.removeChannel(dbChannel);setupVoice();dbCha
 async function toggleReady(){ready=!ready;$('ready').textContent=ready?'Not ready ↩':"I'm ready ✓";const {error}=await db.from('racing_room_players').update({ready}).eq('id',player.id);if(error)say('roomMsg',error.message)}
 async function start(){if(!isHost){say('roomMsg','শুধু Room Host রেস শুরু করতে পারবে।');return}const btn=$('start');btn.disabled=true;say('roomMsg','রেস শুরু হচ্ছে…');try{const {data:ps,error:pe}=await db.from('racing_room_players').select('user_id,nickname,ready').eq('room_id',room.id);if(pe)throw pe;if(!ps||ps.length<2)throw Error('রেসের জন্য অন্তত ২ জন খেলোয়াড় দরকার।');const waiting=ps.filter(p=>!p.ready);if(waiting.length)throw Error('সবাই Ready হয়নি: '+waiting.map(p=>p.nickname).join(', '));const startedAt=Date.now()+1500;const {data:updated,error}=await db.from('racing_rooms').update({status:'racing',track_id:selectedTrack}).eq('id',room.id).eq('host_user_id',user.id).eq('status','waiting').select('id,status').maybeSingle();if(error)throw error;if(!updated)throw Error('রুমের Start permission পাওয়া যায়নি অথবা রুম ইতিমধ্যে শুরু হয়েছে।');if(gameChannel&&gameChannelReady){await gameChannel.send({type:'broadcast',event:'map-select',payload:{track:selectedTrack}});await gameChannel.send({type:'broadcast',event:'race-start',payload:{startedAt,track:selectedTrack}})}begin(startedAt)}catch(e){say('roomMsg','Start failed: '+(e.message||'Unknown error'))}finally{btn.disabled=false}}
 function begin(startedAt=Date.now()){if(started)return;started=true;$('racePlace').textContent=(TRACKS[selectedTrack]||TRACKS.gec).name;raceFinished=false;finishShown=false;distance=0;speed=0;x=0;accelHeld=false;$('room').classList.add('hidden');$('raceScreen').classList.add('active');$('raceState').textContent='RACING';say('roomMsg','রেস শুরু হয়েছে!');init3D();if(raceAnim)cancelAnimationFrame(raceAnim);lastRaceFrame=performance.now();raceLoop()}
-let raceRenderer=null,raceScene=null,raceCamera=null,raceBike=null,raceMarks=[],raceFoliage=[],remoteBikes={},raceAnim=0,lastRaceFrame=0;
+let raceRenderer=null,raceScene=null,raceCamera=null,raceBike=null,raceMarks=[],raceFoliage=[],remoteBikes={},raceScenery=null,raceAnim=0,lastRaceFrame=0;
 function makeBike(color=selectedBikeColor,style=selectedBikeStyle){
  const g=new THREE.Group(),paint=new THREE.MeshStandardMaterial({color,metalness:.48,roughness:.28}),darkPaint=new THREE.MeshStandardMaterial({color:0x17212a,metalness:.35,roughness:.34}),black=new THREE.MeshStandardMaterial({color:0x101416,roughness:.82}),rubber=new THREE.MeshStandardMaterial({color:0x090b0c,roughness:.96}),chrome=new THREE.MeshStandardMaterial({color:0xb9c7ce,metalness:.86,roughness:.2}),glass=new THREE.MeshStandardMaterial({color:0x162d42,metalness:.35,roughness:.16}),lamp=new THREE.MeshStandardMaterial({color:0xfff0bd,emissive:0xffc45c,emissiveIntensity:1.2});
  const mesh=(geo,mat,x,y,z,rx=0,ry=0,rz=0)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);m.castShadow=true;m.receiveShadow=true;g.add(m);return m};
@@ -92,6 +92,66 @@ function buildRouteScenery(){
  // landmark signboards for the selected Chattogram route
  const signCanvas=document.createElement('canvas');signCanvas.width=768;signCanvas.height=192;const ctx=signCanvas.getContext('2d');ctx.fillStyle='#07533c';ctx.fillRect(0,0,768,192);ctx.strokeStyle='#f4e7c2';ctx.lineWidth=9;ctx.strokeRect(8,8,752,176);ctx.fillStyle='#fff';ctx.font='bold 58px sans-serif';ctx.textAlign='center';ctx.fillText(selectedTrack==='patenga'?'PATENGA SEA BEACH':selectedTrack==='foys'?"FOY'S LAKE • BATali HILL":'GEC CIRCLE • TIGERPASS',384,118);
  const signTex=new THREE.CanvasTexture(signCanvas);signTex.colorSpace=THREE.SRGBColorSpace;const routeSign=new THREE.Mesh(new THREE.PlaneGeometry(9,2.25),new THREE.MeshBasicMaterial({map:signTex,side:THREE.DoubleSide}));routeSign.position.set(0,5.4,-28);root.add(routeSign);
+ // Lived-in Bangladesh street details: stalls, utility wires and local traffic
+ const trafficPaint=[0x16744b,0xe2b64f,0x2f526e,0xb53c32,0xd7d4c9].map(c=>mat(c,.42));
+ const tireMat=mat(0x111314,.96),metalMat=mat(0x9ba5a5,.28),rickshawRed=mat(0xc83c34,.48),rickshawGreen=mat(0x08734b,.5);
+ function roadsideVehicle(type,x,z,flip=1){
+  const v=new THREE.Group();v.position.set(x,.02,z);v.rotation.y=flip>0?Math.PI/2:-Math.PI/2;
+  const part=(geo,ma,px,py,pz)=>{const o=new THREE.Mesh(geo,ma);o.position.set(px,py,pz);o.castShadow=true;o.receiveShadow=true;v.add(o);return o};
+  const wheel=(px,pz,r=.25)=>{part(new THREE.TorusGeometry(r,.075,8,18),tireMat,px,r,pz,0);part(new THREE.CylinderGeometry(.07,.07,.13,10),metalMat,px,r,pz)};
+  if(type==='cng'){
+   part(new THREE.BoxGeometry(1.2,.65,1.65),rickshawGreen,0,.72,0);part(new THREE.BoxGeometry(1.1,.42,1.15),trafficPaint[1],0,1.2,-.05);
+   part(new THREE.BoxGeometry(1.25,.12,1.7),metalMat,0,1.47,0);
+   part(new THREE.BoxGeometry(.85,.38,.04),glassMat,0,1.1,-.84);
+   wheel(-.48,-.55,.25);wheel(.48,-.55,.25);wheel(0,.78,.25);
+  }else if(type==='rickshaw'){
+   part(new THREE.BoxGeometry(.82,.25,1.15),metalMat,0,.55,.1);part(new THREE.BoxGeometry(.95,.5,.65),rickshawRed,0,.9,.42);
+   part(new THREE.BoxGeometry(1.05,.12,.82),rickshawGreen,0,1.22,.4);
+   part(new THREE.BoxGeometry(.9,.08,.7),rickshawRed,0,1.29,.4);
+   wheel(-.42,.52,.24);wheel(.42,.52,.24);wheel(0,-.72,.2);
+   part(new THREE.CylinderGeometry(.035,.035,.85,7),metalMat,0,.72,-.63);
+  }else if(type==='bus'){
+   part(new THREE.BoxGeometry(1.7,1.65,3.2),trafficPaint[2],0,1.05,0);
+   part(new THREE.BoxGeometry(1.72,.28,3.22),trafficPaint[1],0,1.82,0);
+   for(let z0 of [-1.05,-.35,.35,1.05])part(new THREE.BoxGeometry(.48,.48,.035),glassMat,0,1.34,z0-0.01);
+   wheel(-.82,-1.05,.34);wheel(.82,-1.05,.34);wheel(-.82,1.05,.34);wheel(.82,1.05,.34);
+  }else{
+   part(new THREE.BoxGeometry(1.45,.58,2.45),trafficPaint[3],0,.75,0);
+   part(new THREE.BoxGeometry(1.12,.48,1.18),glassMat,0,1.18,-.08);
+   part(new THREE.BoxGeometry(1.48,.13,.5),trafficPaint[3],0,.95,-.95);
+   for(const xx of [-.68,.68])for(const zz of [-.78,.82])wheel(xx,zz,.27);
+  }
+  root.add(v);
+ }
+ const roadsideTypes=['cng','rickshaw','car','cng','bus','rickshaw','car','cng','rickshaw','car','bus','cng'];
+ roadsideTypes.forEach((type,i)=>{const side=i%2?1:-1;roadsideVehicle(type,side*(7.35+(i%3)*.12),-12-i*12,side)});
+ // Small tea stalls and market carts at the edge of the road
+ for(let i=0;i<9;i++){
+  const side=i%2?1:-1,z=-18-i*17,x=side*8.35;
+  const cart=new THREE.Group();
+  const base=new THREE.Mesh(new THREE.BoxGeometry(1.15,.72,.82),mat(i%2?0x8d4f2b:0x24734d));base.position.set(x,.58,z);cart.add(base);
+  const canopy=new THREE.Mesh(new THREE.BoxGeometry(1.45,.12,1.05),mat(i%3?0xe6c36c:0xc84b3d));canopy.position.set(x,1.15,z);cart.add(canopy);
+  for(const dx of [-.42,.42]){const leg=new THREE.Mesh(new THREE.CylinderGeometry(.035,.035,.65,7),metalMat);leg.position.set(x+dx,.34,z+.32);cart.add(leg)}
+  const sign=new THREE.Mesh(new THREE.BoxGeometry(1.25,.28,.06),mat(0x07533c));sign.position.set(x,1.43,z-.48);cart.add(sign);
+  root.add(cart);
+ }
+ // Overhead power/telecom cables across the busy street
+ for(let i=0;i<5;i++){
+  const z=-8-i*31;
+  const points=[new THREE.Vector3(-8.5,5.9,z),new THREE.Vector3(-4,5.3,z-2),new THREE.Vector3(0,5.15,z-3),new THREE.Vector3(4,5.35,z-2),new THREE.Vector3(8.5,5.9,z)];
+  const cable=new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),18,.018,5,false),mat(0x343b3c));
+  root.add(cable);
+ }
+ // Bangla shop signs with varied local storefront labels
+ const shopLabels=['চায়ের দোকান','ফার্মেসি','মোবাইল সার্ভিস','হোটেল','মুদি দোকান','কাপড় ঘর'];
+ shopLabels.forEach((label,i)=>{
+  const c=document.createElement('canvas');c.width=512;c.height=128;const g=c.getContext('2d');
+  g.fillStyle=i%2?'#07533c':'#a94332';g.fillRect(0,0,512,128);g.strokeStyle='#f4e7c2';g.lineWidth=7;g.strokeRect(5,5,502,118);
+  g.fillStyle='#fff';g.font='bold 54px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(label,256,65);
+  const tex=new THREE.CanvasTexture(c);tex.colorSpace=THREE.SRGBColorSpace;
+  const board=new THREE.Mesh(new THREE.PlaneGeometry(2.25,.56),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
+  const side=i%2?1:-1;board.position.set(side*(9.3+(i%3)*1.15),2.45,-13-i*22);board.rotation.y=side>0?Math.PI:0;root.add(board);
+ });
  // Route-specific visual landmarks
  if(selectedTrack==='gec'){
   // GEC Circle traffic island and elevated flyover-like sweeping structure
@@ -112,11 +172,11 @@ function buildRouteScenery(){
  }
  // finish gantry
  const gantry=mat(0xe2e9dd);for(const xx of [-6.5,6.5]){const p=new THREE.Mesh(new THREE.BoxGeometry(.35,4,.35),gantry);p.position.set(xx,2,-145);root.add(p)}const top=new THREE.Mesh(new THREE.BoxGeometry(13,.4,.4),mat(0xc5ee74));top.position.set(0,4,-145);root.add(top);
- raceScene.add(root)
+ raceScenery=root;raceScene.add(root)
 }
 function chromeMat(){return new THREE.MeshStandardMaterial({color:0xaab8ae,metalness:.75,roughness:.24})}
 function resize3D(){if(!raceRenderer)return;const w=$('raceScreen').clientWidth||innerWidth,h=$('raceScreen').clientHeight||innerHeight;raceRenderer.setSize(w,h,false);raceCamera.aspect=w/h;raceCamera.updateProjectionMatrix()}
-function raceLoop(){if(!started||!room)return;const now=performance.now(),dt=Math.min(.05,(now-lastRaceFrame)/1000||.016);lastRaceFrame=now;if(accelHeld&&!raceFinished)speed=Math.min(45,speed+24*dt);else speed=Math.max(0,speed-8*dt);x=Math.max(-5.2,Math.min(5.2,x+steer*speed*dt*.055));if(raceBike){raceBike.position.x+=(x-raceBike.position.x)*Math.min(1,dt*8);raceBike.rotation.z+=(-steer*.25-raceBike.rotation.z)*Math.min(1,dt*7)}distance+=speed*dt;const track=TRACKS[selectedTrack]||TRACKS.gec,target=track.target,cp=Math.min(track.checkpoints.length-1,Math.floor(distance/target*track.checkpoints.length));if(!raceFinished&&distance>0)$('raceHint').textContent='📍 '+track.checkpoints[cp]+' • '+Math.min(100,Math.round(distance/target*100))+'%';if(distance>=target){distance=target;raceFinished=true;speed=0;$('raceHint').textContent='🏁 FINISH LINE!';if(!finishShown){finishShown=true;$('finishPraise').textContent=selectedTrack==='patenga'?'আরে বাহ! পতেঙ্গার বাতাসও তোরে আটকাইতে পারল না রে!':'ওই বাহ! ফাটাইয়া দিছস! চাটগাঁর সেরা রাইডার তুই!';$('finishStats').textContent='রুট: '+TRACKS[selectedTrack].name+' • '+TRACKS[selectedTrack].km+' কিমি';$('finishOverlay').classList.add('show')}}const shift=(distance*.9)%8;raceMarks.forEach(m=>m.position.z=-(((-m.position.z+shift)%160)+1));raceFoliage.forEach(t=>{let z=t.z+(distance*.9)%180;if(z>8)z-=180;t.tr.position.z=z;t.top.position.z=z+1.7});for(const [id,o] of Object.entries(others)){if(!remoteBikes[id]){remoteBikes[id]=makeBike(o.color||0x4daaff,o.style||'sport');raceScene.add(remoteBikes[id])}const opponentX=Number.isFinite(Number(o.x))?(Number(o.x)-450)/75:0;const relativeProgress=Number(o.distance||0)-distance;const opponentZ=Math.max(-65,Math.min(22,3-relativeProgress*.04));remoteBikes[id].position.set(Math.max(-5.2,Math.min(5.2,opponentX)),0,opponentZ)}$('raceSpeed').textContent=Math.round(speed*4.2)+' km/h';if(gameChannel&&gameChannelReady&&now-lastBroadcast>100){gameChannel.send({type:'broadcast',event:'position',payload:{id:user.id,x:450+x*75,distance,finished:raceFinished,color:selectedBikeColor,style:selectedBikeStyle}});lastBroadcast=now}if(raceRenderer&&raceScene){raceCamera.position.x+=(raceBike.position.x*.4-raceCamera.position.x)*Math.min(1,dt*3);raceCamera.lookAt(raceBike.position.x*.22,1,-9);raceRenderer.render(raceScene,raceCamera)}raceAnim=requestAnimationFrame(raceLoop)}
+function raceLoop(){if(!started||!room)return;const now=performance.now(),dt=Math.min(.05,(now-lastRaceFrame)/1000||.016);lastRaceFrame=now;if(accelHeld&&!raceFinished)speed=Math.min(45,speed+24*dt);else speed=Math.max(0,speed-8*dt);x=Math.max(-5.2,Math.min(5.2,x+steer*speed*dt*.055));if(raceBike){raceBike.position.x+=(x-raceBike.position.x)*Math.min(1,dt*8);raceBike.rotation.z+=(-steer*.25-raceBike.rotation.z)*Math.min(1,dt*7)}distance+=speed*dt;const track=TRACKS[selectedTrack]||TRACKS.gec,target=track.target,cp=Math.min(track.checkpoints.length-1,Math.floor(distance/target*track.checkpoints.length));if(!raceFinished&&distance>0)$('raceHint').textContent='📍 '+track.checkpoints[cp]+' • '+Math.min(100,Math.round(distance/target*100))+'%';if(distance>=target){distance=target;raceFinished=true;speed=0;$('raceHint').textContent='🏁 FINISH LINE!';if(!finishShown){finishShown=true;$('finishPraise').textContent=selectedTrack==='patenga'?'আরে বাহ! পতেঙ্গার বাতাসও তোরে আটকাইতে পারল না রে!':'ওই বাহ! ফাটাইয়া দিছস! চাটগাঁর সেরা রাইডার তুই!';$('finishStats').textContent='রুট: '+TRACKS[selectedTrack].name+' • '+TRACKS[selectedTrack].km+' কিমি';$('finishOverlay').classList.add('show')}}const sceneryShift=(distance*.9)%180;if(raceScenery)raceScenery.position.z=sceneryShift;const shift=(distance*.9)%8;raceMarks.forEach(m=>m.position.z=-(((-m.position.z+shift)%160)+1));raceFoliage.forEach(t=>{let z=t.z+(distance*.9)%180;if(z>8)z-=180;t.tr.position.z=z;t.top.position.z=z+1.7});for(const [id,o] of Object.entries(others)){if(!remoteBikes[id]){remoteBikes[id]=makeBike(o.color||0x4daaff,o.style||'sport');raceScene.add(remoteBikes[id])}const opponentX=Number.isFinite(Number(o.x))?(Number(o.x)-450)/75:0;const relativeProgress=Number(o.distance||0)-distance;const opponentZ=Math.max(-65,Math.min(22,3-relativeProgress*.04));remoteBikes[id].position.set(Math.max(-5.2,Math.min(5.2,opponentX)),0,opponentZ)}$('raceSpeed').textContent=Math.round(speed*4.2)+' km/h';if(gameChannel&&gameChannelReady&&now-lastBroadcast>100){gameChannel.send({type:'broadcast',event:'position',payload:{id:user.id,x:450+x*75,distance,finished:raceFinished,color:selectedBikeColor,style:selectedBikeStyle}});lastBroadcast=now}if(raceRenderer&&raceScene){raceCamera.position.x+=(raceBike.position.x*.4-raceCamera.position.x)*Math.min(1,dt*3);raceCamera.lookAt(raceBike.position.x*.22,1,-9);raceRenderer.render(raceScene,raceCamera)}raceAnim=requestAnimationFrame(raceLoop)}
 async function leave(){if(!room)return;if(dbChannel)db.removeChannel(dbChannel);if(gameChannel)db.removeChannel(gameChannel);if(voiceChannel)db.removeChannel(voiceChannel);Object.values(voicePeers).forEach(pc=>pc.close());voicePeers={};if(localAudioStream){localAudioStream.getTracks().forEach(t=>t.stop());localAudioStream=null;}await db.from('racing_room_players').delete().eq('id',player.id);if(isHost)await db.from('racing_rooms').update({status:'closed'}).eq('id',room.id);room=null;player=null;started=false;cancelAnimationFrame(anim);cancelAnimationFrame(raceAnim);$('raceScreen').classList.remove('active');$('room').classList.add('hidden');$('lobby').classList.remove('hidden')}
 window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();if(['ArrowLeft','a','A'].includes(e.key))steer=-1;if(['ArrowRight','d','D'].includes(e.key))steer=1;if(e.key===' '&&started)accelHeld=true});window.addEventListener('keyup',e=>{if(['ArrowLeft','ArrowRight','a','A','d','D'].includes(e.key))steer=0;if(e.key===' ')accelHeld=false});
 $('routeSelect').onchange=chooseTrack;$('bikeStyle').onchange=()=>{selectedBikeStyle=$('bikeStyle').value;if(raceBike){raceScene.remove(raceBike);raceBike=makeBike(selectedBikeColor,selectedBikeStyle);raceBike.position.set(0,0,3);raceScene.add(raceBike)}};$('bikeColor').onchange=()=>{selectedBikeColor=Number($('bikeColor').value);if(raceBike&&raceBike.children.length){raceScene.remove(raceBike);raceBike=makeBike(selectedBikeColor,selectedBikeStyle);raceBike.position.set(0,0,3);raceScene.add(raceBike)}};$('finishLobby').onclick=()=>{ $('finishOverlay').classList.remove('show');leave()};$('raceExit').onclick=()=>{if(confirm('রেস ছেড়ে Lobby-তে ফিরবে?'))leave()};$('raceLeft').onpointerdown=()=>steer=-1;$('raceRight').onpointerdown=()=>steer=1;['raceLeft','raceRight'].forEach(id=>$(id).onpointerup=$(id).onpointerleave=$(id).onpointercancel=()=>steer=0);$('raceGo').onpointerdown=e=>{e.preventDefault();accelHeld=true};$('raceGo').onpointerup=$('raceGo').onpointerleave=$('raceGo').onpointercancel=()=>{accelHeld=false};$('micToggle').onclick=toggleMic;$('speakerToggle').onclick=toggleSpeaker;$('create').onclick=createRoom;$('join').onclick=joinRoom;$('ready').onclick=toggleReady;$('start').onclick=start;$('leave').onclick=leave;$('copyCode').onclick=async()=>{try{await navigator.clipboard.writeText(room.room_code);say('roomMsg','Room code copied!')}catch{say('roomMsg','Room code: '+room.room_code)}};init();
