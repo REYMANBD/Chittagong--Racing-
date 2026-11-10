@@ -239,7 +239,7 @@ function raceLoop(){
   const opponentZ=Math.max(-65,Math.min(22,3-relativeProgress*.04));
   remoteBikes[id].position.set(Math.max(-5.5,Math.min(5.5,opponentX)),0,opponentZ)
  }
- $('raceSpeed').textContent=Math.round(speed*3.6)+' km/h';
+ $('raceSpeed').textContent=Math.round(speed*3.6)+' km/h';const routeNames=selectedTrack==='patenga'?['আগ্রাবাদ','সিইপিজেড','কর্ণফুলী','পতেঙ্গা সমুদ্রসৈকত']:selectedTrack==='foys'?['জিইসি মোড়','ফয়েজ লেকের পথ','বাটালি হিল']:['জিইসি মোড়','ওয়াসা মোড়','টাইগারপাস','দেওয়ানহাট','আগ্রাবাদ'];const labelIndex=Math.min(routeNames.length-1,Math.floor(distance/(selectedTrack==='patenga'?210:selectedTrack==='foys'?260:190)));$('racePlace').textContent='📍 '+routeNames[labelIndex]+' • ফ্রি রাইড';
  if(gameChannel&&gameChannelReady&&now-lastBroadcast>100){gameChannel.send({type:'broadcast',event:'position',payload:{id:user.id,x:450+x*75,distance,color:selectedBikeColor,style:selectedBikeStyle}});lastBroadcast=now}
  if(raceRenderer&&raceScene){raceCamera.position.x+=(raceBike.position.x*.4-raceCamera.position.x)*Math.min(1,dt*3);raceCamera.lookAt(raceBike.position.x*.22,1,-9);raceRenderer.render(raceScene,raceCamera)}
  raceAnim=requestAnimationFrame(raceLoop)
