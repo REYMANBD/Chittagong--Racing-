@@ -195,9 +195,10 @@ function raceLoop(){
  x=Math.max(-5.5,Math.min(5.5,x+steer*Math.max(5,speed)*dt*.065));
  if(raceBike){raceBike.position.x+=(x-raceBike.position.x)*Math.min(1,dt*8);raceBike.rotation.z+=(-steer*.3-raceBike.rotation.z)*Math.min(1,dt*7)}
  distance+=speed*dt;
+ const sceneryShift=(distance*.9)%180;
  for(const pad of chargePads){let pz=pad.z+sceneryShift;if(pz>8)pz-=180;if(Math.abs(pz-3)<2.1&&Math.abs(x-pad.x)<1.45&&speed<8){battery=Math.min(100,battery+34*dt);showFunToast('⚡ চার্জ হচ্ছে! একটু থামো ভাই');}}
  if($('raceBattery'))$('raceBattery').textContent='🔋 '+Math.round(battery)+'%';
- const sceneryShift=(distance*.9)%180;if(raceScenery)raceScenery.position.z=sceneryShift;
+ if(raceScenery)raceScenery.position.z=sceneryShift;
  const shift=(distance*.9)%8;raceMarks.forEach(m=>m.position.z=-(((-m.position.z+shift)%160)+1));
  raceFoliage.forEach(t=>{let z=t.z+(distance*.9)%180;if(z>8)z-=180;t.tr.position.z=z;t.top.position.z=z+1.7});
  // Comic, non-graphic pedestrian and traffic bump moments
